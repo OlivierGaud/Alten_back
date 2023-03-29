@@ -1,0 +1,122 @@
+import json
+import os
+from flask import Flask, jsonify, request, abort
+
+app = Flask(__name__)
+
+# Résoudre le chemin d'accès absolu au fichier JSON
+# Resolve the absolute file path to the JSON file
+json_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../front/src/assets/products.json')
+
+# Lire les données de produits depuis le fichier JSON
+# Read product data from the JSON file
+with open(json_file, 'r') as f:
+    products_data = json.load(f)
+
+
+# Fonction utilitaire pour valider les données du produit
+# Utility function to validate product data
+def validate_product(product):
+    required_fields = ['code', 'name', 'price', 'quantity', 'inventoryStatus', 'category']
+    for field in required_fields:
+        if field not in product:
+            # Retourner une erreur HTTP 400 avec un message d'erreur si un champ requis est manquant
+            # Return an HTTP 400 error with an error message if a required field is missing
+            abort(400, f"Le champ '{field}' est obligatoire.")
+    if 'quantity' in product and product['quantity'] <= 0:
+        # Retourner une erreur HTTP 400 avec un message d'erreur si la quantité est inférieure ou égale à zéro
+        # Return an HTTP 400 error with an error message if the quantity is less than or equal to zero
+        abort(400, "La quantité doit être supérieure à 0.")
+
+
+# API REST pour créer un nouveau produit
+# REST API to create a new product
+@app.route('/products', methods=['POST'])
+def create_product():
+    # Récupérer les données JSON envoyées dans la requête POST
+    # Retrieve the JSON data sent in the POST request
+    product_data = request.json
+    # Valider les données du produit
+    # Validate the product data
+    validate_product(product_data)
+    # Générer un nouvel ID pour le produit
+    # Generate a new ID for the product
+    if not products_data:
+        new_id = 1
+    else:
+        new_id = max(product['id'] for product in products_data) + 1
+    # Ajouter l'ID généré au dictionnaire de données du produit
+    # Add the generated ID to the product data dictionary
+    product_data['id'] = new_id
+    # Ajouter le nouveau produit à la liste de données de produits
+    # Add the new product to the list of product data
+    products_data.append(product_data)
+    # Écrire les données mises à jour dans le fichier JSON
+    # Write the updated data to the JSON file
+    with open(json_file, 'w') as f:
+        json.dump(products_data, f, indent=4)
+    # Retourner les données du produit créé avec le code de statut 201 (Créé)
+    # Return the created product data with the status code 201 (Created)
+    return jsonify(product_data), 201
+
+
+# API REST pour récupérer tous les produits
+# REST API to retrieve all products
+@app.route('/products', methods=['GET'])
+def get_products():
+    # Retourner les données de tous les produits
+    # Return the data of all products
+    return jsonify(products_data), 200
+
+
+## API REST pour récupérer un produit par nom
+# REST API to retrieve a product by name
+@app.route('/products/<product_name>', methods=['GET'])
+def get_product(product_name):
+    # Remplacer les underscore par des espaces pour gérer les espaces dans le nom du produit
+    # Replace underscores with spaces to handle spaces in the product name
+    product_name = product_name.replace('_', ' ')
+    # Rechercher le produit dans les données des produits
+    # Find the product in the product data
+    product = next((product for product in products_data if product['name'] == product_name), None)
+    # Si le produit n'est pas trouvé, retourner une réponse avec le code HTTP 404
+    # If the product is not found, return a response with HTTP status code 404
+    if product is None:
+        return jsonify({'error': 'Product not found'}), 404
+    # Si le produit est trouvé, retourner les données du produit sous forme de réponse JSON
+    # If the product is found, return the product data as a JSON response
+    return jsonify(product)
+
+
+# API REST pour mettre à jour un produit par ID
+# REST API to update a product by ID
+@app.route('/products/<int:product_id>', methods=['PATCH'])
+def update_product(product_id):
+    # Trouver le produit correspondant à l'ID
+    # Find the product corresponding to the ID
+    product = next((product for product in products_data if int(product['id']) == product_id), None)
+    if product is None:
+        # Si le produit n'existe pas, renvoyer une erreur 404
+        # If the product doesn't exist, return a 404 error
+        abort(404, f"Le produit avec l'ID {product_id} n'existe pas.")
+    # Récupérer les données de mise à jour du produit à partir du corps de la requête HTTP
+    # Get the update data for the product from the HTTP request body
+    update_data = request.json
+    # Valider les données de mise à jour du produit
+    # Validate the product update data
+    validate_product(update_data)
+    # Mettre à jour les champs du produit avec les nouvelles valeurs
+    # Update the product fields with the new values
+    for key in update_data:
+        product[key] = update_data[key]
+    # Sauvegarder les données de produits mises à jour dans le fichier JSON
+    # Save the updated product data to the JSON file
+    with open(json_file, 'w') as f:
+        json.dump(products_data, f, indent=4)
+    # Renvoyer les données mises à jour du produit en tant que réponse HTTP
+    # Return the updated product data as an HTTP response
+    return jsonify(product)
+
+
+if __name__ == '__main__':
+    app.run(port=3000)
